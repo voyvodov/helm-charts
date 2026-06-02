@@ -1,0 +1,19 @@
+apiVersion: v2
+name: redis
+description: A Helm chart for Redis on Kubernetes
+type: application
+maintainers:
+  - name: voyvodov
+    url: https://github.com/voyvodov/helm-charts
+
+keywords:
+  - cache
+  - redis
+
+icon: https://redis.io/wp-content/uploads/2024/04/Logotype.svg
+
+# This is the chart version
+version: "0.3.0"
+
+# This is the version number of the application being deployed.
+appVersion: "8.8.0"
