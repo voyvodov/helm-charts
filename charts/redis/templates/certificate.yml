@@ -1,0 +1,21 @@
+{{- if .Values.tls.enabled -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "redis.fullname" . }}-tls
+  labels:
+    {{- include "redis.labels" . | nindent 4 }}
+spec:
+  commonName: {{ include "redis.fqdn" . }}
+  dnsNames:
+    - {{ include "redis.fqdn" . }}
+    {{- include "redis.tls.domains" . | nindent 4 }}
+    {{- range .Values.tls.additionalDomains }}
+    - {{ . }}
+    {{- end }}
+  issuerRef:
+    kind: {{ .Values.tls.issuerRef.kind }}
+    name: {{ .Values.tls.issuerRef.name }}
+    group: {{ .Values.tls.issuerRef.group }}
+  secretName: {{ include "redis.fullname" . }}-tls
+{{- end -}}
