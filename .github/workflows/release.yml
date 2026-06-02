@@ -1,0 +1,87 @@
+name: Release Charts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+
+  workflow_dispatch:
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Helm charts matrix
+        id: set-matrix
+        run: |
+          CHARTS_PATHS=$(find ./charts/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n")[:-1]')
+          echo "Matrix: $CHARTS_PATHS"
+          echo "matrix=$CHARTS_PATHS" >> $GITHUB_OUTPUT
+
+  publish-charts-oci:
+    needs: prepare-matrix
+    permissions:
+      contents: read
+      packages: write
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set environment variables
+        id: set-variables
+        run: |
+          echo "VERSION=$(yq -r .version ./charts/${{ matrix.chart }}/Chart.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Env variable output
+        id: test-variables
+        run: |
+          echo ${{ steps.set-variables.outputs.REPOSITORY }}
+          echo ${{ steps.set-variables.outputs.VERSION }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20 # v3.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Package and push helm chart
+        run: |
+          helm package . --version ${{ steps.set-variables.outputs.VERSION }} --destination .
+          echo "Pushing chart ${{ matrix.chart }} version ${{ steps.set-variables.outputs.VERSION }} to GitHub Container Registry under oci://ghcr.io/${{ github.repository }}"
+          helm push ./${{ matrix.chart }}-${{ steps.set-variables.outputs.VERSION }}.tgz oci://ghcr.io/${{ github.repository }}
+        working-directory: ./charts/${{ matrix.chart }}
+  publish-charts-github:
+    # depending on default permission settings for your org (contents being read-only or read-write for workloads), you will have to add permissions
+    # see: https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
