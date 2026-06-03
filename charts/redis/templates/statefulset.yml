@@ -87,8 +87,8 @@ spec:
             - name: REDISCLI_AUTH
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.redis.authentication.existingSecret }}
-                  key: redis-password
+                  name: {{ .Values.redis.authentication.secretRef.name }}
+                  key: {{ .Values.redis.authentication.secretRef.key }}
           {{- end }}
           {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
@@ -226,8 +226,8 @@ spec:
             - name: REDISCLI_AUTH
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.redis.authentication.existingSecret }}
-                  key: redis-password
+                  name: {{ .Values.redis.authentication.secretRef.name }}
+                  key: {{ .Values.redis.authentication.secretRef.key }}
             {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
@@ -386,8 +386,8 @@ spec:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.redis.authentication.existingSecret }}
-                  key: redis-password
+                  name: {{ $.Values.redis.authentication.secretRef.name }}
+                  key: {{ $.Values.redis.authentication.secretRef.key }}
             {{- end }}
           {{- with .exporter.env }}
             {{- toYaml . | nindent 12 }}

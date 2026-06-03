@@ -270,10 +270,14 @@ redis:
 
   authentication:
     ## Enable authentication
-    enabled: true
+    enabled: false
 
-    ## Existing secret with the Redis password (the secret should contain a key "redis-password")
-    existingSecret: "redis-password"
+    ## Existing secret with the Redis password
+    secretRef:
+      ## Name of the existing K8s secret
+      name: ""
+      ## Key in the existing secret that contains the Redis password (default "redis-password")
+      key: "redis-password"
 
     acl:
       ## Enable ACL support (only for Redis 6 and above)

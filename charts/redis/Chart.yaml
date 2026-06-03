@@ -13,7 +13,7 @@ keywords:
 icon: https://redis.io/wp-content/uploads/2024/04/Logotype.svg
 
 # This is the chart version
-version: "0.3.0"
+version: "0.3.1"
 
 # This is the version number of the application being deployed.
 appVersion: "8.8.0"

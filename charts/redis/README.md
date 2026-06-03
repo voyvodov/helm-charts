@@ -107,7 +107,8 @@ helm uninstall my-release
 | Key | Default | Description |
 |-----|---------|-------------|
 | `redis.authentication.enabled` | `true` | Enable Redis password auth |
-| `redis.authentication.existingSecret` | `redis-password` | Secret containing key `redis-password` |
+| `redis.authentication.secretRef.name` | `""` | Secret containing the auth password |
+| `redis.authentication.secretRef.key` | `redis-password` | The key in the secret with the auth password |
 | `redis.authentication.acl.enabled` | `false` | Enable ACL mode |
 | `redis.authentication.acl.existingSecret` | `""` | Secret containing key `redis-acl` |
 | `redis.persistence.snapshot.enabled` | `false` | Enable RDB snapshots |
