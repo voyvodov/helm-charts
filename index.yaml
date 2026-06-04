@@ -3,6 +3,23 @@ entries:
   redis:
   - apiVersion: v2
     appVersion: 8.8.0
+    created: "2026-06-04T11:07:44.476233298Z"
+    description: A Helm chart for Redis on Kubernetes
+    digest: fe80a836ab92d950be75fa4f303d8d79993cf5915214bbc4cfc78b9aff0f1df5
+    icon: https://redis.io/wp-content/uploads/2024/04/Logotype.svg
+    keywords:
+    - cache
+    - redis
+    maintainers:
+    - name: voyvodov
+      url: https://github.com/voyvodov/helm-charts
+    name: redis
+    type: application
+    urls:
+    - https://github.com/voyvodov/helm-charts/releases/download/redis-0.4.0/redis-0.4.0.tgz
+    version: 0.4.0
+  - apiVersion: v2
+    appVersion: 8.8.0
     created: "2026-06-02T14:31:24.540049984Z"
     description: A Helm chart for Redis on Kubernetes
     digest: 500ad1b949ffa5fce25623f0b50d9f96f733012f8c9b7329fbbda4a5484993a5
@@ -35,4 +52,4 @@ entries:
     urls:
     - https://github.com/voyvodov/helm-charts/releases/download/redis-0.3.0/redis-0.3.0.tgz
     version: 0.3.0
-generated: "2026-06-03T10:54:20.435707805Z"
+generated: "2026-06-04T11:07:44.476244896Z"
