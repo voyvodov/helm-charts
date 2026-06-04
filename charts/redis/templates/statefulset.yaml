@@ -1,12 +1,7 @@
 {{- $createPvc := and (empty .Values.storage.persistentVolumeClaimName) (.Values.storage.requestedSize) }}
-{{- $deployWithNonHA := and (not .Values.haMode.enabled) (.Values.useDeploymentWhenNonHA) }}
 {{- $fullname := include "redis.fullname" . }}
 apiVersion: apps/v1
-{{- if $deployWithNonHA }}
-kind: Deployment
-{{- else }}
 kind: StatefulSet
-{{- end }}
 metadata:
   name: {{ $fullname }}
   labels:
@@ -51,8 +46,8 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/customconfig: {{ include (print $.Template.BasePath "/config.yml") . | sha256sum }}
-        checksum/scripts: {{ include (print $.Template.BasePath "/scripts.yml") . | sha256sum }}
+        checksum/customconfig: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        checksum/scripts: {{ include (print $.Template.BasePath "/scripts.yaml") . | sha256sum }}
       {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -104,12 +99,15 @@ spec:
               name: {{ .Values.storage.volumeName }}
             - name: scripts
               mountPath: /scripts
+            - mountPath: /conf
+              name: runtime-config
             - mountPath: /usr/local/etc/redis/redis.conf
               subPath: redis.conf
               name: config
-            - mountPath: /usr/local/etc/redis/sentinel.conf
-              subPath: sentinel.conf
-              name: config
+          {{- if .Values.tls.enabled }}
+            - name: tls-secret
+              mountPath: /tls
+          {{- end }}
           {{- if .Values.redis.extraSecretConfigs }}
             - mountPath: /extraredisconfigs
               name: extraredisconfigs-volume
@@ -217,7 +215,7 @@ spec:
           command:
             - redis-server
           args:
-            - /data/conf/redis.conf
+            - /conf/redis.conf
             {{- range .Values.redis.args }}
             - {{ . }}
             {{- end }}
@@ -231,7 +229,7 @@ spec:
             {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           envFrom:
           {{- range .Values.redis.extraEnvSecrets }}
             - secretRef:
@@ -240,6 +238,8 @@ spec:
           volumeMounts:
             - name: {{ .Values.storage.volumeName }}
               mountPath: /data
+            - name: runtime-config
+              mountPath: /conf
             {{- if .Values.tls.enabled }}
             - name: tls-secret
               mountPath: /tls
@@ -323,7 +323,7 @@ spec:
           command:
             - redis-sentinel
           args:
-            - /data/conf/sentinel.conf
+            - /conf/sentinel.conf
             {{- range .Values.sentinel.args }}
             - {{ . }}
             {{- end }}
@@ -337,8 +337,8 @@ spec:
                 name: {{ . }}
           {{- end }}
           volumeMounts:
-            - name: {{ .Values.storage.volumeName }}
-              mountPath: /data
+            - name: runtime-config
+              mountPath: /conf
             {{- if .Values.tls.enabled }}
             - name: tls-secret
               mountPath: /tls
@@ -489,6 +489,8 @@ spec:
         - name: config
           configMap:
             name: {{ $fullname }}
+        - name: runtime-config
+          emptyDir: {}
         {{- if .Values.tls.enabled }}
         - name: tls-secret
           secret:
@@ -562,11 +564,6 @@ spec:
           emptyDir: {}
         {{- end }}
   {{- else }}
-  {{- if $deployWithNonHA }}
-        - name: {{ .volumeName }}
-          persistentVolumeClaim:
-            claimName: {{ $fullname }}
-  {{- else }}
   volumeClaimTemplates:
     - metadata:
         name: {{ .volumeName }}
@@ -589,6 +586,5 @@ spec:
         resources:
           requests:
             storage: {{ .requestedSize }}
-  {{- end }}
   {{- end }}
 {{- end }}

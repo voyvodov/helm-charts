@@ -1,6 +1,6 @@
 # Redis
 
-![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 8.8.0](https://img.shields.io/badge/AppVersion-8.8.0-informational?style=flat-square)
+![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 8.8.0](https://img.shields.io/badge/AppVersion-8.8.0-informational?style=flat-square)
 
 A Helm chart for running Redis on Kubernetes with optional Sentinel HA mode, TLS, and metrics exporter support.
 
@@ -49,8 +49,7 @@ helm uninstall my-release
 - Set `haMode.enabled: false` (default)
 - Runs a single Redis server pod
 - Exposes Redis on `service.serverPort` (default `6379`)
-- Uses a StatefulSet by default (`useDeploymentWhenNonHA: false`)
-- Can use Deployment instead by setting `useDeploymentWhenNonHA: true`
+- Uses a StatefulSet by default
 
 ### HA with Sentinel
 
@@ -69,123 +68,198 @@ helm uninstall my-release
 | `<fullname>-headless` | Service | Always |
 | `<fullname>` | ConfigMap | Always |
 | `<fullname>-scripts` | ConfigMap | Always |
-| `<fullname>` | StatefulSet | Always, except when non-HA + `useDeploymentWhenNonHA: true` |
-| `<fullname>` | Deployment | Only when non-HA + `useDeploymentWhenNonHA: true` |
-| `<fullname>` | PersistentVolumeClaim | Only when non-HA + `useDeploymentWhenNonHA: true` + `storage.requestedSize` set + no `storage.persistentVolumeClaimName` |
+| `<fullname>` | StatefulSet | Always in current defaults |
 | `<serviceAccountName>` | ServiceAccount | `serviceAccount.create: true` |
 | `<fullname>-metrics` | Service | `metrics.enabled: true` and `metrics.service.enabled: true` |
 | `<fullname>-tls` | Certificate | `tls.enabled: true` |
 
-## Important Values
+## Values Reference
 
-### Naming and Image
+The table below is generated from the current `values.yaml` and includes all existing keys and defaults.
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `nameOverride` | `""` | Override chart name part |
-| `fullnameOverride` | `""` | Override full resource name |
-| `image.registry` | `docker.io` | Redis image registry |
-| `image.repository` | `redis` | Redis image repository |
-| `image.tag` | `""` | Redis image tag (`appVersion` is used when empty) |
-| `image.pullPolicy` | `IfNotPresent` | Pull policy |
-| `imagePullSecrets` | `[]` | Image pull secrets |
-
-### Services
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `service.type` | `ClusterIP` | Main service type (ignored in HA where service is ClusterIP) |
-| `service.serverPort` | `6379` | Redis service port |
-| `service.sentinelPort` | `26379` | Sentinel service port |
-| `service.nodePort` | `null` | NodePort when service type requires it |
-| `service.clusterIP` | `null` | Fixed ClusterIP |
-| `service.loadBalancerIP` | `null` | LoadBalancer IP |
-| `service.loadBalancerSourceRanges` | `[]` | Allowed CIDR ranges for LoadBalancer |
-
-### Redis
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `redis.authentication.enabled` | `true` | Enable Redis password auth |
-| `redis.authentication.secretRef.name` | `""` | Secret containing the auth password |
-| `redis.authentication.secretRef.key` | `redis-password` | The key in the secret with the auth password |
-| `redis.authentication.acl.enabled` | `false` | Enable ACL mode |
-| `redis.authentication.acl.existingSecret` | `""` | Secret containing key `redis-acl` |
-| `redis.persistence.snapshot.enabled` | `false` | Enable RDB snapshots |
-| `redis.persistence.aof.enabled` | `false` | Enable AOF persistence |
-| `redis.persistence.aof.appendfsync` | `everysec` | AOF fsync policy |
-| `redis.args` | `[]` | Extra args for `redis-server` |
-| `redis.config` | empty | Extra Redis config appended to generated config |
-| `redis.extraEnvSecrets` | `[]` | Secrets exposed as env in Redis container |
-| `redis.extraSecrets` | `[]` | Extra secret volumes mounted to Redis container |
-| `redis.extraConfigs` | `[]` | Extra configMap volumes mounted to Redis container |
-| `redis.extraSecretConfigs` | empty | Secret mounted and appended to Redis config |
-
-### Sentinel and HA
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `haMode.enabled` | `false` | Enable HA/Sentinel mode |
-| `haMode.replicas` | `3` | Number of Redis/Sentinel pods |
-| `haMode.useDnsNames` | `true` | Use DNS hostnames for cluster wiring |
-| `haMode.masterGroupName` | `redisha` | Sentinel master group name |
-| `haMode.quorum` | `2` | Sentinel quorum |
-| `haMode.downAfterMilliseconds` | `15000` | Mark master down threshold |
-| `haMode.failoverTimeout` | `90000` | Sentinel failover timeout |
-| `haMode.parallelSyncs` | `1` | Sentinel parallel-syncs |
-| `haMode.masterAliveTestTimeout` | `2` | Timeout for master liveness checks |
-| `haMode.failoverWait` | `30` | Max wait before forced failover |
-| `haMode.dnsFailureWait` | `15` | Wait before restart on DNS failure |
-| `haMode.keepOldLogs` | `false` | Keep old init logs |
-| `sentinel.args` | `[]` | Extra args for `redis-sentinel` |
-| `sentinel.config` | empty | Extra Sentinel config appended to generated config |
-| `sentinel.extraEnvSecrets` | `[]` | Secrets exposed as env in Sentinel container |
-| `sentinel.extraSecrets` | `[]` | Extra secret volumes mounted to Sentinel container |
-| `sentinel.extraConfigs` | `[]` | Extra configMap volumes mounted to Sentinel container |
-| `sentinel.extraSecretConfigs` | empty | Secret mounted and appended to Sentinel config |
-
-### Storage
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `storage.persistentVolumeClaimName` | empty | Use existing PVC name |
-| `storage.volumeName` | `redis-data` | Internal volume/PVC name |
-| `storage.requestedSize` | empty | Size for dynamically created PVC |
-| `storage.className` | empty | StorageClass name |
-| `storage.accessModes` | `[ReadWriteOnce]` | PVC access modes |
-| `storage.keepPvc` | `false` | Keep PVC on chart uninstall (Deployment mode PVC only) |
-| `storage.persistentVolumeClaimRetentionPolicy.whenDeleted` | empty | StatefulSet PVC policy on delete |
-| `storage.persistentVolumeClaimRetentionPolicy.whenScaled` | empty | StatefulSet PVC policy on scale-down |
-| `extraStorage` | `{}` | Extra existing PVC mounts |
-| `useDeploymentWhenNonHA` | `false` | Use Deployment instead of StatefulSet in non-HA mode |
-
-### TLS
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `tls.enabled` | `false` | Enable TLS mode |
-| `tls.existingSecret` | `""` | Existing TLS secret mounted by pods when set |
-| `tls.additionalDomains` | `[]` | Additional SAN entries for generated certificate |
-| `tls.issuerRef.name` | empty | cert-manager issuer name |
-| `tls.issuerRef.kind` | `Issuer` | cert-manager issuer kind |
-| `tls.issuerRef.group` | `cert-manager.io` | cert-manager issuer API group |
-
-### Metrics Exporter
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `metrics.enabled` | `false` | Enable exporter sidecar |
-| `metrics.exporter.image.repository` | `oliver006/redis_exporter` | Exporter image repository |
-| `metrics.exporter.image.tag` | `v1.84.0` | Exporter image tag |
-| `metrics.exporter.args` | `[]` | Exporter args |
-| `metrics.exporter.env` | `[]` | Extra exporter env vars |
-| `metrics.exporter.extraExporterEnvSecrets` | `[]` | Secrets exposed as env in exporter |
-| `metrics.exporter.extraExporterSecrets` | `[]` | Extra secret mounts in exporter |
-| `metrics.exporter.extraExporterConfigs` | `[]` | Extra configMap mounts in exporter |
-| `metrics.service.enabled` | `true` | Enable separate exporter service |
-| `metrics.service.type` | `ClusterIP` | Exporter service type |
-| `metrics.service.servicePort` | `9121` | Exporter service port |
-| `metrics.service.containerPort` | `9121` | Exporter container port |
+| Key | Default |
+|-----|---------|
+| `affinity` | `{}` |
+| `clusterDomain` | `cluster.local` |
+| `customAnnotations` | `{}` |
+| `customLabels` | `{}` |
+| `customLivenessProbe` | `{}` |
+| `customReadinessProbe` | `{}` |
+| `customStartupProbe` | `{}` |
+| `env` | `[]` |
+| `extraContainers` | `[]` |
+| `extraInitContainers` | `[]` |
+| `extraInitEnvSecrets` | `[]` |
+| `extraStorage` | `{}` |
+| `fullnameOverride` | `""` |
+| `haMode.dnsFailureWait` | `15` |
+| `haMode.downAfterMilliseconds` | `15000` |
+| `haMode.enabled` | `false` |
+| `haMode.failoverTimeout` | `90000` |
+| `haMode.failoverWait` | `30` |
+| `haMode.keepOldLogs` | `false` |
+| `haMode.masterAliveTestTimeout` | `2` |
+| `haMode.masterGroupName` | `redisha` |
+| `haMode.parallelSyncs` | `1` |
+| `haMode.quorum` | `2` |
+| `haMode.replicas` | `3` |
+| `haMode.useDnsNames` | `true` |
+| `image.pullPolicy` | `IfNotPresent` |
+| `image.registry` | `docker.io` |
+| `image.repository` | `redis` |
+| `image.tag` | `""` |
+| `imagePullSecrets` | `[]` |
+| `livenessProbe.enabled` | `true` |
+| `livenessProbe.failureThreshold` | `3` |
+| `livenessProbe.initialDelaySeconds` | `15` |
+| `livenessProbe.periodSeconds` | `10` |
+| `livenessProbe.successThreshold` | `1` |
+| `livenessProbe.timeoutSeconds` | `5` |
+| `metrics.enabled` | `false` |
+| `metrics.exporter.args` | `[]` |
+| `metrics.exporter.customLivenessProbe` | `{}` |
+| `metrics.exporter.customReadinessProbe` | `{}` |
+| `metrics.exporter.customStartupProbe` | `{}` |
+| `metrics.exporter.env` | `[]` |
+| `metrics.exporter.extraExporterConfigs` | `[]` |
+| `metrics.exporter.extraExporterEnvSecrets` | `[]` |
+| `metrics.exporter.extraExporterSecrets` | `[]` |
+| `metrics.exporter.image.pullPolicy` | `IfNotPresent` |
+| `metrics.exporter.image.registry` | `docker.io` |
+| `metrics.exporter.image.repository` | `oliver006/redis_exporter` |
+| `metrics.exporter.image.tag` | `v1.84.0` |
+| `metrics.exporter.livenessProbe.enabled` | `true` |
+| `metrics.exporter.livenessProbe.failureThreshold` | `3` |
+| `metrics.exporter.livenessProbe.initialDelaySeconds` | `15` |
+| `metrics.exporter.livenessProbe.periodSeconds` | `10` |
+| `metrics.exporter.livenessProbe.successThreshold` | `1` |
+| `metrics.exporter.livenessProbe.timeoutSeconds` | `5` |
+| `metrics.exporter.readinessProbe.enabled` | `true` |
+| `metrics.exporter.readinessProbe.failureThreshold` | `3` |
+| `metrics.exporter.readinessProbe.initialDelaySeconds` | `15` |
+| `metrics.exporter.readinessProbe.periodSeconds` | `10` |
+| `metrics.exporter.readinessProbe.successThreshold` | `1` |
+| `metrics.exporter.readinessProbe.timeoutSeconds` | `5` |
+| `metrics.exporter.resources` | `{}` |
+| `metrics.exporter.securityContext.allowPrivilegeEscalation` | `false` |
+| `metrics.exporter.securityContext.capabilities.drop` | `["ALL"]` |
+| `metrics.exporter.securityContext.privileged` | `false` |
+| `metrics.exporter.securityContext.readOnlyRootFilesystem` | `true` |
+| `metrics.exporter.securityContext.runAsGroup` | `999` |
+| `metrics.exporter.securityContext.runAsNonRoot` | `true` |
+| `metrics.exporter.securityContext.runAsUser` | `999` |
+| `metrics.exporter.startupProbe.enabled` | `true` |
+| `metrics.exporter.startupProbe.failureThreshold` | `5` |
+| `metrics.exporter.startupProbe.initialDelaySeconds` | `10` |
+| `metrics.exporter.startupProbe.periodSeconds` | `10` |
+| `metrics.exporter.startupProbe.successThreshold` | `1` |
+| `metrics.exporter.startupProbe.timeoutSeconds` | `5` |
+| `metrics.service.annotations` | `{}` |
+| `metrics.service.clusterIP` | `null` |
+| `metrics.service.containerPort` | `9121` |
+| `metrics.service.enabled` | `true` |
+| `metrics.service.labels` | `{}` |
+| `metrics.service.loadBalancerIP` | `null` |
+| `metrics.service.loadBalancerSourceRanges` | `[]` |
+| `metrics.service.nodePort` | `null` |
+| `metrics.service.servicePort` | `9121` |
+| `metrics.service.type` | `ClusterIP` |
+| `metrics.serviceMonitor.additionalLabels` | `{}` |
+| `metrics.serviceMonitor.annotations` | `{}` |
+| `metrics.serviceMonitor.enabled` | `true` |
+| `metrics.serviceMonitor.extraEndpointParameters` | `{}` |
+| `metrics.serviceMonitor.extraParameters` | `{}` |
+| `metrics.serviceMonitor.path` | `/metrics` |
+| `metrics.serviceMonitor.scheme` | `http` |
+| `nameOverride` | `""` |
+| `networkPolicy` | `{}` |
+| `nodeSelector` | `{}` |
+| `pdb.enabled` | `true` |
+| `pdb.maxUnavailable` | `1` |
+| `pdb.minAvailable` | `null` |
+| `podAnnotations` | `{}` |
+| `podDisruptionBudget` | `{}` |
+| `podLabels` | `{}` |
+| `podManagementPolicy` | `OrderedReady` |
+| `podSecurityContext.fsGroup` | `999` |
+| `podSecurityContext.supplementalGroups` | `[999]` |
+| `priorityClassName` | `""` |
+| `readinessProbe.enabled` | `true` |
+| `readinessProbe.failureThreshold` | `3` |
+| `readinessProbe.initialDelaySeconds` | `15` |
+| `readinessProbe.periodSeconds` | `10` |
+| `readinessProbe.successThreshold` | `1` |
+| `readinessProbe.timeoutSeconds` | `5` |
+| `redis.args` | `[]` |
+| `redis.authentication.acl.enabled` | `false` |
+| `redis.authentication.acl.secretRef.key` | `redis-acl` |
+| `redis.authentication.acl.secretRef.name` | `""` |
+| `redis.authentication.enabled` | `false` |
+| `redis.authentication.secretRef.key` | `redis-password` |
+| `redis.authentication.secretRef.name` | `""` |
+| `redis.config` | `null` |
+| `redis.extraConfigs` | `[]` |
+| `redis.extraEnvSecrets` | `[]` |
+| `redis.extraSecretConfigs` | `null` |
+| `redis.extraSecrets` | `[]` |
+| `redis.initResources` | `{}` |
+| `redis.persistence.aof.appendfsync` | `everysec` |
+| `redis.persistence.aof.enabled` | `false` |
+| `redis.persistence.snapshot.enabled` | `false` |
+| `redis.persistence.snapshot.save` | `[{"time":900,"changes":1},{"time":300,"changes":10},{"time":60,"changes":10000}]` |
+| `redis.resources` | `{}` |
+| `revisionHistoryLimit` | `null` |
+| `securityContext.allowPrivilegeEscalation` | `false` |
+| `securityContext.capabilities.drop` | `["ALL"]` |
+| `securityContext.privileged` | `false` |
+| `securityContext.readOnlyRootFilesystem` | `true` |
+| `securityContext.runAsGroup` | `999` |
+| `securityContext.runAsNonRoot` | `true` |
+| `securityContext.runAsUser` | `999` |
+| `sentinel.args` | `[]` |
+| `sentinel.config` | `""` |
+| `sentinel.extraConfigs` | `[]` |
+| `sentinel.extraEnvSecrets` | `[]` |
+| `sentinel.extraSecretConfigs` | `null` |
+| `sentinel.extraSecrets` | `[]` |
+| `sentinel.resources` | `{}` |
+| `service.annotations` | `{}` |
+| `service.clusterIP` | `null` |
+| `service.labels` | `{}` |
+| `service.loadBalancerIP` | `null` |
+| `service.loadBalancerSourceRanges` | `[]` |
+| `service.nodePort` | `null` |
+| `service.sentinelPort` | `26379` |
+| `service.serverPort` | `6379` |
+| `service.type` | `ClusterIP` |
+| `serviceAccount.annotations` | `{}` |
+| `serviceAccount.create` | `true` |
+| `serviceAccount.name` | `""` |
+| `startupProbe.enabled` | `true` |
+| `startupProbe.failureThreshold` | `30` |
+| `startupProbe.initialDelaySeconds` | `10` |
+| `startupProbe.periodSeconds` | `10` |
+| `startupProbe.successThreshold` | `1` |
+| `startupProbe.timeoutSeconds` | `5` |
+| `storage.accessModes` | `["ReadWriteOnce"]` |
+| `storage.annotations` | `{}` |
+| `storage.className` | `null` |
+| `storage.keepPvc` | `false` |
+| `storage.labels` | `{}` |
+| `storage.persistentVolumeClaimName` | `null` |
+| `storage.persistentVolumeClaimRetentionPolicy.whenDeleted` | `null` |
+| `storage.persistentVolumeClaimRetentionPolicy.whenScaled` | `null` |
+| `storage.requestedSize` | `null` |
+| `storage.volumeName` | `redis-data` |
+| `tls.additionalDomains` | `[]` |
+| `tls.enabled` | `false` |
+| `tls.existingSecret` | `""` |
+| `tls.issuerRef.group` | `cert-manager.io` |
+| `tls.issuerRef.kind` | `Issuer` |
+| `tls.issuerRef.name` | `null` |
+| `tolerations` | `[]` |
+| `topologySpreadConstraints` | `{}` |
+| `updateStrategyType` | `RollingUpdate` |
 
 ## Notes
 

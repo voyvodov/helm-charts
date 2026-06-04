@@ -1,3 +1,7 @@
+{{- if and (.Values.tls.enabled) (not  .Values.haMode.useDnsNames) -}}
+{{- fail "TLS is currently only supported in HA mode with useDnsNames enabled" -}}
+{{- end -}}
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,20 +9,16 @@ metadata:
   labels:
     {{- include "redis.labels" . | nindent 4 }}
 data:
-  init.sh: |
-    #!/bin/sh
-    REDIS_CONFIG=/data/conf/redis.conf
-    SENTINEL_CONFIG=/data/conf/sentinel.conf
-
+  common.sh: |
     # Clean up old init logs or print them
     cleanup_log() {
   {{- if not .Values.haMode.keepOldLogs }}
-      rm -f /data/init.log
+      rm -f /conf/init.log
   {{- end }}
-      if [ -f "/data/init.log" ]; then
+      if [ -f "/conf/init.log" ]; then
         echo "Detected restart of this instance ($HOSTNAME)"
         echo "## This was the previous log:"
-        cat /data/init.log
+        cat /conf/init.log
         echo "## End of previous log"
       fi
     }
@@ -27,16 +27,50 @@ data:
     # $1 - the log message
     log() {
       echo "$(date) $1"
-      echo "$(date) $1" >>/data/init.log
+      echo "$(date) $1" >>/conf/init.log
     }
+
+    run_redis_command() {
+      {{- if .Values.tls.enabled }}
+      redis-cli -h 127.0.0.1 -p 6379 --tls --cacert /tls/ca.crt "$@"
+      {{- else }}
+      redis-cli -h 127.0.0.1 -p 6379 "$@"
+      {{- end }}
+    }
+
+    run_sentinel_command() {
+      {{- if .Values.tls.enabled }}
+      redis-cli -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} --tls --cacert /tls/ca.crt sentinel "$@"
+      {{- else }}
+      redis-cli -h {{ template "redis.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }} -p {{ .Values.service.sentinelPort }} sentinel "$@"
+      {{- end }}
+    }
+
+
+  init.sh: |
+    #!/bin/sh
+
+    . /scripts/common.sh
+
+    REDIS_CONFIG=/conf/redis.conf
+    SENTINEL_CONFIG=/conf/sentinel.conf
+
+    HEADLESS_SERVICE="{{ template "redis.fullname" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+    REDIS_SERVICE="{{ template "redis.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
 
     failover() {
       log "Forcing failover now"
       {{- if .Values.tls.enabled -}}
-      redis-cli --tls --cacert /tls/ca.crt -h {{ template "redis.fqdn" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
+      redis-cli --tls --cacert /tls/ca.crt -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
       {{- else -}}
-      redis-cli -h {{ template "redis.fqdn" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
+      redis-cli -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
       {{- end }}
+    }
+
+    is_master() {
+        REDIS_ROLE=$(run_redis_command role | head -1)
+        echo "REDIS_ROLE: $REDIS_ROLE"
+        [[ "$REDIS_ROLE" == "master" ]]
     }
 
     # Creating redis base configuration
@@ -53,7 +87,6 @@ data:
       echo "tls-port 6379" >>$REDIS_CONFIG
       echo "tls-auth-clients no" >>$REDIS_CONFIG
       echo "tls-replication yes" >>$REDIS_CONFIG
-      echo "tls-protocols \"TLSv1.2 TLSv1.3\"" >>$REDIS_CONFIG
       echo "port 0" >>$REDIS_CONFIG
       {{- else }}
       echo "port 6379" >>$REDIS_CONFIG
@@ -76,7 +109,7 @@ data:
       {{- end }}
 
       {{- if .Values.haMode.useDnsNames }}
-      echo "replica-announce-ip ${HOSTNAME}.{{ include "redis.fqdn" . }}" >>$REDIS_CONFIG
+      echo "replica-announce-ip ${HOSTNAME}.{{ include "redis.fullDomain" . }}" >>$REDIS_CONFIG
       {{ else }}
       THISIP="$(getent hosts $HOSTNAME | awk '{ print $1 }')"
       echo "replica-announce-ip ${THISIP}" >>$REDIS_CONFIG
@@ -112,15 +145,15 @@ data:
 
     get_cluster_master() {
       {{- if .Values.tls.enabled }}
-      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli --tls --cacert /tls/ca.crt -h {{ template "redis.fqdn" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
+      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli --tls --cacert /tls/ca.crt -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
       {{- else }}
-      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli -h {{ template "redis.fqdn" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
+      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
       {{- end }}
     }
 
     test_valid_dns() {
-      KNOWN_HOSTS="$(getent hosts {{ include "redis.fqdn" . }} | awk '{ print $1 }')"
-      log "## Known hosts for headless service {{ include "redis.fqdn" . }}:"
+      KNOWN_HOSTS="$(getent hosts {{ include "redis.fullDomain" . }} | awk '{ print $1 }')"
+      log "## Known hosts for headless service {{ include "redis.fullDomain" . }}:"
       for AHOSTIP in $KNOWN_HOSTS; do
         AHOSTNAME=$(getent hosts $AHOSTIP | awk '{print $2}')
         log "${AHOSTIP} ${AHOSTNAME}"
@@ -132,59 +165,6 @@ data:
       {{- else }}
       MASTERENTRY="$(getent hosts $MASTER | awk '{ print $1 }')"
       {{- end }}
-    }
-
-    
-
-    configure_sentinel() {
-      log "Configuring sentinel server..."
-      if [ -z "$MASTER" ]; then
-        {{- if .Values.haMode.useDnsNames }}
-        MASTER=${HOSTNAME}.{{ include "redis.fqdn" . }}
-        {{- else }}
-        MASTER="$(getent hosts $HOSTNAME | awk '{ print $1 }')"
-        {{- end }}
-        log "No master found - Configuring sentinel for master $HOSTNAME with address $MASTER"
-        echo "sentinel monitor {{ include "redis.masterGroupName" . }} $MASTER 6379 {{ .Values.haMode.quorum }}" >>$SENTINEL_CONFIG
-      else
-        log "Redis master was found - Configuring sentinel for master address $MASTER"
-        echo "sentinel monitor {{ include "redis.masterGroupName" . }} $MASTER 6379 {{ .Values.haMode.quorum }}" >>$SENTINEL_CONFIG
-      fi
-      {{- if .Values.haMode.useDnsNames }}
-      echo "SENTINEL resolve-hostnames yes" >>$SENTINEL_CONFIG
-      echo "SENTINEL announce-hostnames yes" >>$SENTINEL_CONFIG
-      {{- if .Values.tls.enabled }}
-      echo "tls-cert-file /tls/tls.crt" >>$SENTINEL_CONFIG
-      echo "tls-key-file /tls/tls.key" >>$SENTINEL_CONFIG
-      echo "tls-ca-cert-file /tls/ca.crt" >>$SENTINEL_CONFIG
-      echo "tls-port 26379" >>$SENTINEL_CONFIG
-      echo "tls-auth-clients no" >>$SENTINEL_CONFIG
-      echo "tls-replication yes" >>$SENTINEL_CONFIG
-      echo "port 0" >>$SENTINEL_CONFIG
-      {{- else }}
-      echo "port 26379" >>$SENTINEL_CONFIG
-      {{- end }}
-      {{- if .Values.redis.authentication.enabled }}
-      echo "SENTINEL auth-pass {{ include "redis.masterGroupName" . }} ${REDISCLI_AUTH}" >>$SENTINEL_CONFIG
-      echo "requirepass $REDISCLI_AUTH" >>$SENTINEL_CONFIG
-      {{- end }}
-      echo "SENTINEL announce-ip ${HOSTNAME}.{{ include "redis.fqdn" . }}" >>$SENTINEL_CONFIG
-      {{- end }}
-      echo "sentinel down-after-milliseconds {{ include "redis.masterGroupName" . }} {{ .Values.haMode.downAfterMilliseconds }}" >>$SENTINEL_CONFIG
-      echo "sentinel failover-timeout {{ include "redis.masterGroupName" . }} {{ .Values.haMode.failoverTimeout }}" >>$SENTINEL_CONFIG
-    }
-
-    configure_sentinel_ext() {
-      log "Setting extended sentinel configuration"
-      if [ -f /usr/local/etc/redis/sentinel.conf ]; then
-          log "Adding optional sentinel configuration settings"
-          cat /usr/local/etc/redis/sentinel.conf >>$SENTINEL_CONFIG
-      fi
-      if [ -d /extrasentinelconfigs ]; then
-        log "Adding extra sentinel configs to sentinel configuration"
-        cat /extrasentinelconfigs/* >>$SENTINEL_CONFIG
-      fi
-      log "Configuring sentinel server finished."
     }
 
     configure_redis_cluster() {
@@ -269,6 +249,55 @@ data:
       fi
     }
 
+    configure_sentinel_ext() {
+      log "Setting extended sentinel configuration"
+      if [ -f /usr/local/etc/redis/sentinel.conf ]; then
+          log "Adding optional sentinel configuration settings"
+          cat /usr/local/etc/redis/sentinel.conf >>$SENTINEL_CONFIG
+      fi
+      if [ -d /extrasentinelconfigs ]; then
+        log "Adding extra sentinel configs to sentinel configuration"
+        cat /extrasentinelconfigs/* >>$SENTINEL_CONFIG
+      fi
+      log "Configuring sentinel server finished."
+    }
+
+    configure_sentinel() {
+      log "Configuring sentinel server..."
+      if [ -z "$MASTER" ]; then
+        {{- if .Values.haMode.useDnsNames }}
+        MASTER=${HOSTNAME}.${HEADLESS_SERVICE}
+        {{- else }}
+        MASTER="$(getent hosts $HOSTNAME | awk '{ print $1 }')"
+        {{- end }}
+        log "No master found - Configuring sentinel for master $HOSTNAME with address $MASTER"
+        echo "sentinel monitor {{ include "redis.masterGroupName" . }} $MASTER 6379 {{ .Values.haMode.quorum }}" >>$SENTINEL_CONFIG
+      else
+        log "Redis master was found - Configuring sentinel for master address $MASTER"
+        echo "sentinel monitor {{ include "redis.masterGroupName" . }} $MASTER 6379 {{ .Values.haMode.quorum }}" >>$SENTINEL_CONFIG
+      fi
+      {{- if .Values.haMode.useDnsNames }}
+      echo "SENTINEL resolve-hostnames yes" >>$SENTINEL_CONFIG
+      echo "SENTINEL announce-hostnames yes" >>$SENTINEL_CONFIG
+      echo "SENTINEL announce-ip ${HOSTNAME}.{{ include "redis.fullDomain" . }}" >>$SENTINEL_CONFIG
+      {{- end }}
+      {{- if .Values.redis.authentication.enabled }}
+      echo "SENTINEL auth-pass {{ include "redis.masterGroupName" . }} ${REDISCLI_AUTH}" >>$SENTINEL_CONFIG
+      echo "requirepass $REDISCLI_AUTH" >>$SENTINEL_CONFIG
+      {{- end }}
+      {{- if .Values.tls.enabled }}
+      echo "tls-cert-file /tls/tls.crt" >>$SENTINEL_CONFIG
+      echo "tls-key-file /tls/tls.key" >>$SENTINEL_CONFIG
+      echo "tls-ca-cert-file /tls/ca.crt" >>$SENTINEL_CONFIG
+      echo "tls-port 26379" >>$SENTINEL_CONFIG
+      echo "tls-auth-clients no" >>$SENTINEL_CONFIG
+      echo "tls-replication yes" >>$SENTINEL_CONFIG
+      echo "port 0" >>$SENTINEL_CONFIG
+      {{- end }}
+      echo "sentinel down-after-milliseconds {{ include "redis.masterGroupName" . }} {{ .Values.haMode.downAfterMilliseconds }}" >>$SENTINEL_CONFIG
+      echo "sentinel failover-timeout {{ include "redis.masterGroupName" . }} {{ .Values.haMode.failoverTimeout }}" >>$SENTINEL_CONFIG
+    }
+
     log "Creating configuration..."
     mkdir -p /data/conf
     cleanup_log
@@ -278,8 +307,8 @@ data:
   {{- if .Values.haMode.enabled }}
     log "Redis HA-mode is enabled"
     rm -f $SENTINEL_CONFIG
-    configure_sentinel_ext
     configure_redis_cluster
+    configure_sentinel_ext
     configure_sentinel
   {{- end }}
     log "Done."

@@ -29,6 +29,15 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
+## PDB configuration
+pdb:
+  ## Enable Pod Disruption Budget
+  enabled: true
+  ## Minimum number of pods that must be available after eviction (cannot be used with maxUnavailable)
+  minAvailable:
+  ## Maximum number of pods that can be unavailable after eviction (cannot be used with minAvailable)
+  maxUnavailable: 1
+
 ## Additional pod annotations
 podAnnotations: {}
 
@@ -279,11 +288,14 @@ redis:
       ## Key in the existing secret that contains the Redis password (default "redis-password")
       key: "redis-password"
 
+    # Existing secret with the Redis ACL rules (only for Redis 6 and above)
     acl:
       ## Enable ACL support (only for Redis 6 and above)
       enabled: false
       ## Existing secret with the ACL rules (the secret should contain a key "redis-acl")
-      existingSecret: ""
+      secretRef:
+        name: ""
+        key: "redis-acl"
 
   persistence:
     snapshot:
@@ -439,13 +451,6 @@ extraContainers: []
 
 ## Default Kubernetes cluster domain
 clusterDomain: cluster.local
-
-## Custom domain for the Redis service to be used instead of `.svc.{{ .Values.clusterDomain }}` (e.g. "redis.default.mydomain.com")
-customDomain: ""
-
-
-## Use Kubernetes Deployment instead of StatefulSet when in Non-HA mode
-useDeploymentWhenNonHA: false
 
 ## High availability mode (with master-slave replication and sentinel)
 haMode:

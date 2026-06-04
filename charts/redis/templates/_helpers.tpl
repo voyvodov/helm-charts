@@ -31,6 +31,17 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
+Namespace override
+*/}}
+{{- define "redis.namespace" -}}
+{{- if .Values.namespaceOverride }}
+{{- .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- .Release.Namespace | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+
+{{/*
 Common labels
 */}}
 {{- define "redis.labels" -}}
@@ -84,26 +95,16 @@ Create the name of the service account to use
 {{- end -}}
 
 
-{{- define "redis.fqdn" -}}
-{{- if .Values.customDomain }}
-{{- if .Values.haMode.enabled }}
-{{- printf "%s-headless.%s.%s" (include "redis.fullname" .) .Release.Namespace .Values.customDomain }}
-{{- else }}
-{{- printf "%s.%s.%s" (include "redis.fullname" .) .Release.Namespace .Values.customDomain }}
-{{- end }}
-{{- else }}
+{{- define "redis.fullDomain" -}}
 {{- if .Values.haMode.enabled }}
 {{- printf "%s-headless.%s.svc.%s" (include "redis.fullname" .) .Release.Namespace .Values.clusterDomain }}
 {{- else }}
-{{- printf "%s.svc.%s" (include "redis.fullname" .) .Release.Namespace .Values.clusterDomain }}
+{{- printf "%s.%s.svc.%s" (include "redis.fullname" .) .Release.Namespace .Values.clusterDomain }}
 {{- end }}
 {{- end -}}
-{{- end -}}
-
 
 {{- define "redis.tls.domains" -}}
-
 {{- range $num := until (.Values.haMode.replicas | int) }}
-{{ printf "- %s-%d.%s" (include "redis.fullname" $) $num (include "redis.fqdn" $) }}
+{{ printf "- %s-%d.%s" (include "redis.fullname" $) $num (include "redis.fullDomain" $) }}
 {{- end }}
 {{- end -}}

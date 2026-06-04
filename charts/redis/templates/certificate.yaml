@@ -6,9 +6,9 @@ metadata:
   labels:
     {{- include "redis.labels" . | nindent 4 }}
 spec:
-  commonName: {{ include "redis.fqdn" . }}
+  commonName: {{ include "redis.fullDomain" . }}
   dnsNames:
-    - {{ include "redis.fqdn" . }}
+    - {{ include "redis.fullDomain" . }}
     {{- include "redis.tls.domains" . | nindent 4 }}
     {{- range .Values.tls.additionalDomains }}
     - {{ . }}
