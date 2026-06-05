@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ $fullname }}
+  namespace: {{ include "redis.namespace" . }}
   labels:
     {{- include "redis.labels" . | nindent 4 }}
     {{- with .Values.customLabels }}
@@ -136,6 +137,13 @@ spec:
             - name: redis
               containerPort: 6379
               protocol: TCP
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -ec
+                  - /scripts/prestop-redis.sh
           {{- if .Values.customStartupProbe }}
           startupProbe:
             {{- toYaml .Values.customStartupProbe | nindent 12 }}
@@ -316,7 +324,7 @@ spec:
           {{- end }}
           {{- end }}
           {{- end }}
-          {{- with .Values.sentinelResources }}
+          {{- with .Values.sentinel.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -481,6 +489,7 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.sentinel.terminationGracePeriodSeconds }}
       volumes:
         - name: scripts
           configMap:

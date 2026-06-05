@@ -13,10 +13,10 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-## Additional labels for Deployment or StatefulSet
+## Additional labels for StatefulSet
 customLabels: {}
 
-## Additional annotations for Deployment or StatefulSet
+## Additional annotations for StatefulSet
 customAnnotations: {}
 
 ## Optional service account
@@ -212,7 +212,7 @@ metrics:
   ## Prometheus service monitor configuration
   serviceMonitor:
     ## Enable service monitor
-    enabled: true
+    enabled: false
     ## Additional labels for the service monitor object
     additionalLabels: {}
     ## Annotations for the service monitor object
@@ -221,10 +221,17 @@ metrics:
     # interval:
     ## The scrape timeout value
     # scrapeTimeout:
+    ## Honor labels from the scraped metrics
+    honorLabels: false
     ## Extra parameters rendered to the service monitor endpoint
     extraEndpointParameters: {}
     ## Extra parameters rendered to the service monitor
     extraParameters: {}
+    ## Sample limit for the service monitor
+    # sampleLimit:
+    ## Target limit for the service monitor
+    # targetLimit:
+
     ## Path to metrics
     path: "/metrics"
     ## Scheme to use for metrics endpoint
@@ -366,6 +373,9 @@ sentinel:
 
   ## An existing secret with files that will be added to the sentinel.conf
   extraSecretConfigs:
+
+  ## The time in seconds to allowing Sentinel to shutdown gracefully (default 60 seconds)
+  terminationGracePeriodSeconds: 60
 
   ## A list of additional existing secrets that will be mounted into the sentinel container
   ## The mounted files of the secrets can be used for custom configuration options (see: sentinelConfig, extraSecretSentinelConfigs)

@@ -97,9 +97,9 @@ Create the name of the service account to use
 
 {{- define "redis.fullDomain" -}}
 {{- if .Values.haMode.enabled }}
-{{- printf "%s-headless.%s.svc.%s" (include "redis.fullname" .) .Release.Namespace .Values.clusterDomain }}
+{{- printf "%s-headless.%s.svc.%s" (include "redis.fullname" .) (include "redis.namespace" .) .Values.clusterDomain }}
 {{- else }}
-{{- printf "%s.%s.svc.%s" (include "redis.fullname" .) .Release.Namespace .Values.clusterDomain }}
+{{- printf "%s.%s.svc.%s" (include "redis.fullname" .) (include "redis.namespace" .) .Values.clusterDomain }}
 {{- end }}
 {{- end -}}
 

@@ -6,10 +6,15 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "redis.fullname" . }}-scripts
+  namespace: {{ include "redis.namespace" . }}
   labels:
     {{- include "redis.labels" . | nindent 4 }}
 data:
   common.sh: |
+
+    HEADLESS_SERVICE="{{ template "redis.fullname" . }}-headless.{{ include "redis.namespace" . }}.svc.{{ .Values.clusterDomain }}"
+    REDIS_SERVICE="{{ template "redis.fullname" . }}.{{ include "redis.namespace" . }}.svc.{{ .Values.clusterDomain }}"
+
     # Clean up old init logs or print them
     cleanup_log() {
   {{- if not .Values.haMode.keepOldLogs }}
@@ -38,32 +43,12 @@ data:
       {{- end }}
     }
 
-    run_sentinel_command() {
-      {{- if .Values.tls.enabled }}
-      redis-cli -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} --tls --cacert /tls/ca.crt sentinel "$@"
-      {{- else }}
-      redis-cli -h {{ template "redis.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }} -p {{ .Values.service.sentinelPort }} sentinel "$@"
-      {{- end }}
-    }
-
-
-  init.sh: |
-    #!/bin/sh
-
-    . /scripts/common.sh
-
-    REDIS_CONFIG=/conf/redis.conf
-    SENTINEL_CONFIG=/conf/sentinel.conf
-
-    HEADLESS_SERVICE="{{ template "redis.fullname" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
-    REDIS_SERVICE="{{ template "redis.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
-
     failover() {
       log "Forcing failover now"
-      {{- if .Values.tls.enabled -}}
-      redis-cli --tls --cacert /tls/ca.crt -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
-      {{- else -}}
-      redis-cli -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
+      {{- if .Values.tls.enabled }}
+      redis-cli --tls --cacert /tls/ca.crt -h ${REDIS_SERVICE} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
+      {{- else }}
+      redis-cli -h ${REDIS_SERVICE} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel failover {{ include "redis.masterGroupName" . }}
       {{- end }}
     }
 
@@ -72,6 +57,50 @@ data:
         echo "REDIS_ROLE: $REDIS_ROLE"
         [[ "$REDIS_ROLE" == "master" ]]
     }
+
+    retry_while() {
+      cmd="${1:?cmd is missing}"
+      retries="${2:-12}"
+      sleep_time="${3:-5}"
+      return_value=1
+      i=1
+
+      while [ "$i" -le "$retries" ]; do
+        eval "$cmd" && return_value=0 && break
+        sleep "$sleep_time"
+        i=$((i + 1))
+      done
+      return "$return_value"
+    }
+
+    get_full_hostname() {
+
+      full_hostname="${HOSTNAME}.{{ include "redis.fullDomain" . }}"
+
+      {{- if .Values.haMode.useDnsNames }}
+      echo "$full_hostname"
+      {{- else }}
+      retry_count=0
+      max_retries=5
+      until getent hosts "$full_hostname" | awk '{ print $1; exit }' | grep .; do
+        if [ $retry_count -lt $max_retries ]; then
+          sleep 5
+        else
+          log "Failed to resolve DNS for $full_hostname after $max_retries attempts, exiting with error"
+          exit 1 
+        fi
+        retry_count=$((retry_count + 1))
+      done
+      {{- end }}
+    }
+
+  init.sh: |
+    #!/bin/sh
+
+    . /scripts/common.sh
+
+    REDIS_CONFIG=/conf/redis.conf
+    SENTINEL_CONFIG=/conf/sentinel.conf
 
     # Creating redis base configuration
     configure_redis_base() {
@@ -145,9 +174,9 @@ data:
 
     get_cluster_master() {
       {{- if .Values.tls.enabled }}
-      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli --tls --cacert /tls/ca.crt -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
+      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli --tls --cacert /tls/ca.crt -h ${REDIS_SERVICE} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
       {{- else }}
-      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli -h {{ template "redis.fullDomain" . }} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
+      MASTER="$(timeout {{ .Values.haMode.masterAliveTestTimeout }}s redis-cli -h ${REDIS_SERVICE} -p {{ .Values.service.sentinelPort }} $SENTINELUSER $SENTINELPWD sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }} | head -n 1)"
       {{- end }}
     }
 
@@ -312,3 +341,37 @@ data:
     configure_sentinel
   {{- end }}
     log "Done."
+  prestop-redis.sh: |
+    #!/bin/sh
+
+    . /scripts/common.sh
+
+    failover_done() {
+      SENTINEL_INFO=($(run_sentinel_command sentinel get-master-addr-by-name {{ include "redis.masterGroupName" . }}))
+      REDIS_MASTER_HOST="${SENTINEL_INFO[0]}"
+
+      log "Current master address according to sentinel: $REDIS_MASTER_HOST"
+      if [[ -z "$REDIS_MASTER_HOST" ]]; then
+        echo "WARNING: REDIS_MASTER_HOST is empty, assuming failover not finished"
+        return 1
+      fi
+
+      [[ "$REDIS_MASTER_HOST" != "$(get_full_hostname "$HOSTNAME")" ]]
+    }
+
+    log "Running pre-stop script to clean up before shutdown"
+    if is_master && ! failover_done; then
+      log "This instance is master - Forcing failover before shutdown"
+      # Pause client writes to this instance to prevent data loss during failover
+      run_redis_command CLIENT PAUSE "{{ mul (add 2 (sub .Values.sentinel.terminationGracePeriodSeconds 10)) 1000 }}" WRITE
+
+      failover
+
+      # Wait for failover to complete before allowing shutdown to proceed
+      log "Waiting for failover to complete before shutdown for up to {{ .Values.haMode.terminationGracePeriodSeconds }} seconds"
+      
+      retry_while failover_done {{ sub .Values.haMode.terminationGracePeriodSeconds 10 }} 1
+    else
+      log "This instance is not master - No need to force failover"
+    fi
+  
